@@ -40,9 +40,14 @@ class KakaoAuthService(
         val kakaoToken = fetchKakaoToken(code)
         val userInfo = fetchKakaoUserInfo(kakaoToken)
 
+        log.info("카카오 로그인 시도 - kakaoId=${userInfo.id}, nickname='${userInfo.nickname}'")
+
         val memberId = NAME_TO_MEMBER.entries
             .firstOrNull { (name, _) -> userInfo.nickname.contains(name) }
-            ?.value ?: throw IllegalStateException("LOGIN_NOT_ALLOWED")
+            ?.value ?: run {
+                log.warn("허용되지 않은 사용자 - nickname='${userInfo.nickname}', 허용 목록=${NAME_TO_MEMBER.keys}")
+                throw IllegalStateException("LOGIN_NOT_ALLOWED")
+            }
 
         val user = findOrCreateUser(userInfo, memberId)
 
