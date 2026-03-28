@@ -24,13 +24,16 @@ class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth
+                    // CORS preflight 전체 허용
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     // 인증 없이 허용
-                    .requestMatchers("/api/auth/kakao").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/auth/kakao").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/auth/status/**").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
                     // 나머지는 JWT 필요
                     .anyRequest().authenticated()
             }
-            .headers { it.frameOptions { fo -> fo.disable() } }   // H2 콘솔용
+            .headers { it.frameOptions { fo -> fo.disable() } }
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
@@ -39,8 +42,7 @@ class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val config = CorsConfiguration().apply {
-            // 로컬 개발 + 프로덕션 프론트 도메인 허용
-            allowedOriginPatterns = listOf("http://localhost:3000", "https://*.vercel.app", "*")
+            allowedOriginPatterns = listOf("http://localhost:3000", "https://*.vercel.app")
             allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
