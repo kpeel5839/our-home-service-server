@@ -24,9 +24,18 @@ data class KakaoLoginRequest(
     val redirectUri: String
 )
 
+/** 로그인/링크 응답 — accessToken 포함 */
 data class AuthResponse(
     val accessToken: String,
     val memberId: String?,        // null 이면 프론트에서 구성원 선택 화면으로 이동
+    val nickname: String,
+    val profileImageUrl: String?
+)
+
+/** GET /api/auth/me 응답 — 토큰 재발급 없음 */
+data class MeResponse(
+    val kakaoId: String,
+    val memberId: String?,
     val nickname: String,
     val profileImageUrl: String?
 )

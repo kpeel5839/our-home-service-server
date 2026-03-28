@@ -38,3 +38,9 @@ out/
 
 ### Mac OS ###
 .DS_Store
+
+### Secrets — 절대 커밋 금지 ###
+*-local.yml
+*-local.yaml
+.env
+.env.*

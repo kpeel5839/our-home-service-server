@@ -26,21 +26,19 @@ server:
 #              환경변수 DISCORD_WEBHOOK_URL 로 오버라이드 가능
 # ──────────────────────────────────────────────────────────────────────────────
 discord:
-  webhook-url: ${DISCORD_WEBHOOK_URL}
+  webhook-url: ${DISCORD_WEBHOOK_URL:}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 카카오 OAuth 설정
+# 카카오 OAuth 설정 — 실제 값은 application-local.yml 또는 환경변수로 주입
 # ──────────────────────────────────────────────────────────────────────────────
 kakao:
-  rest-api-key: ${KAKAO_REST_API_KEY}
+  rest-api-key: ${KAKAO_REST_API_KEY:}
   user-info-uri: https://kapi.kakao.com/v2/user/me
   token-uri: https://kauth.kakao.com/oauth/token
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JWT 설정
-# secret: 최소 32자 이상의 랜덤 문자열 (HS256)
-# expiry-ms: 토큰 만료 시간 (기본 7일)
+# JWT 설정 — 실제 secret 은 application-local.yml 또는 환경변수로 주입
 # ──────────────────────────────────────────────────────────────────────────────
 jwt:
-  secret: ${JWT_SECRET}
-  expiry-ms: ${JWT_EXPIRY_MS}
+  secret: ${JWT_SECRET:}
+  expiry-ms: ${JWT_EXPIRY_MS:604800000}

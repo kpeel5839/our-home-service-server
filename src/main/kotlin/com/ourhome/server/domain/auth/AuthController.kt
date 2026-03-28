@@ -32,11 +32,11 @@ class AuthController(
 
     /** 현재 로그인한 유저 정보 조회 */
     @GetMapping("/me")
-    fun me(@AuthenticationPrincipal claims: JwtClaims): ResponseEntity<AuthResponse> {
+    fun me(@AuthenticationPrincipal claims: JwtClaims): ResponseEntity<MeResponse> {
         val user = kakaoUserRepository.findById(claims.kakaoId)
             .orElseThrow { IllegalArgumentException("User not found") }
-        return ResponseEntity.ok(AuthResponse(
-            accessToken = "",   // 재발급하지 않음
+        return ResponseEntity.ok(MeResponse(
+            kakaoId = user.kakaoId,
             memberId = user.memberId,
             nickname = user.nickname,
             profileImageUrl = user.profileImageUrl
