@@ -6,13 +6,13 @@ import org.springframework.stereotype.Component
 import java.time.LocalDate
 
 /**
- * 매일 오전 8시 (KST = UTC+9) 에 금융 시장 데이터를 수집해서 카카오톡으로 전송합니다.
+ * 매일 오전 8시 (KST = UTC+9) 에 금융 시장 데이터를 수집해서 Discord로 전송합니다.
  * cron: "0 0 8 * * *"  — 초 분 시 일 월 요일, timezone = Asia/Seoul
  */
 @Component
 class MarketNotificationScheduler(
     private val marketDataService: MarketDataService,
-    private val kakaoNotificationService: KakaoNotificationService
+    private val discordNotificationService: DiscordNotificationService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -23,7 +23,7 @@ class MarketNotificationScheduler(
         try {
             val data = marketDataService.fetchAllMarketData()
             val message = buildMessage(data)
-            kakaoNotificationService.sendMessage(message)
+            discordNotificationService.sendMessage(message)
         } catch (e: Exception) {
             log.error("[MarketNotification] 알림 전송 실패: ${e.message}", e)
         }

@@ -1,7 +1,5 @@
 package com.ourhome.server.domain.notification
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -79,7 +77,7 @@ class MarketDataService(private val objectMapper: ObjectMapper) {
             "EUR/KRW" to "FX_EURKRW",
             "JPY/KRW" to "FX_JPYKRW",
             "CNY/KRW" to "FX_CNYKRW",
-            "DXY"     to "FX_USDIDX"
+            "DXY" to "FX_USDIDX"
         )
         val result = mutableMapOf<String, ExchangeData>()
         codes.forEach { (displayName, code) ->
@@ -108,9 +106,9 @@ class MarketDataService(private val objectMapper: ObjectMapper) {
         // 국채 금리 — Naver Finance 채권 시세
         val bonds = mapOf(
             "한국 국채 10년" to "MMFS@KR10YT=RR",
-            "한국 국채 3년"  to "MMFS@KR3YT=RR",
+            "한국 국채 3년" to "MMFS@KR3YT=RR",
             "미국 국채 10년" to "MMFS@US10YT=RR",
-            "미국 국채 2년"  to "MMFS@US2YT=RR"
+            "미국 국채 2년" to "MMFS@US2YT=RR"
         )
         val result = mutableMapOf<String, BondData>()
         bonds.forEach { (displayName, code) ->
@@ -144,5 +142,7 @@ class MarketDataService(private val objectMapper: ObjectMapper) {
     private fun formatNumber(value: String): String = try {
         val d = value.toDouble()
         String.format("%,.2f", d)
-    } catch (e: NumberFormatException) { value }
+    } catch (e: NumberFormatException) {
+        value
+    }
 }
