@@ -3,6 +3,7 @@ package com.ourhome.server.domain.auth
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.net.URI
 import java.net.URLEncoder
@@ -27,7 +28,6 @@ class KakaoAuthService(
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
 
     companion object {
-        /** 이름 → FamilyMember ID 하드코딩 매핑 */
         private val NAME_TO_MEMBER = mapOf(
             "김기필" to "m1",  // 아빠
             "윤재희" to "m2",  // 엄마
@@ -37,30 +37,14 @@ class KakaoAuthService(
     }
 
     fun login(code: String): AuthResponse {
-        val kakaoToken = fetchKakaoToken(code, redirectUri)
+        val kakaoToken = fetchKakaoToken(code)
         val userInfo = fetchKakaoUserInfo(kakaoToken)
 
-        // 허용된 이름인지 확인하고 memberId 결정
         val memberId = NAME_TO_MEMBER.entries
             .firstOrNull { (name, _) -> userInfo.nickname.contains(name) }
-            ?.value
-            ?: throw IllegalStateException("LOGIN_NOT_ALLOWED")
+            ?.value ?: throw IllegalStateException("LOGIN_NOT_ALLOWED")
 
-        // KakaoUser 생성 또는 업데이트
-        val user = kakaoUserRepository.findById(userInfo.id).orElseGet {
-            kakaoUserRepository.save(KakaoUser(
-                kakaoId = userInfo.id,
-                nickname = userInfo.nickname,
-                profileImageUrl = userInfo.profileImageUrl,
-                memberId = memberId
-            ))
-        }.also { existing ->
-            var dirty = false
-            if (existing.nickname != userInfo.nickname) { existing.nickname = userInfo.nickname; dirty = true }
-            if (existing.profileImageUrl != userInfo.profileImageUrl) { existing.profileImageUrl = userInfo.profileImageUrl; dirty = true }
-            if (existing.memberId != memberId) { existing.memberId = memberId; dirty = true }
-            if (dirty) kakaoUserRepository.save(existing)
-        }
+        val user = findOrCreateUser(userInfo, memberId)
 
         return AuthResponse(
             accessToken = jwtService.generate(user.kakaoId, memberId),
@@ -70,7 +54,36 @@ class KakaoAuthService(
         )
     }
 
-    private fun fetchKakaoToken(code: String, redirectUri: String): String {
+    /**
+     * 유저 조회 or 생성.
+     * saveAndFlush 로 즉시 flush 하여 중복 키 예외를 이 시점에 잡고,
+     * React StrictMode 등 동시 요청으로 이미 저장된 경우 findById 로 fallback.
+     */
+    private fun findOrCreateUser(userInfo: KakaoUserInfo, memberId: String): KakaoUser {
+        val existing = kakaoUserRepository.findById(userInfo.id)
+        if (existing.isPresent) {
+            val user = existing.get()
+            var dirty = false
+            if (user.nickname != userInfo.nickname)           { user.nickname = userInfo.nickname; dirty = true }
+            if (user.profileImageUrl != userInfo.profileImageUrl) { user.profileImageUrl = userInfo.profileImageUrl; dirty = true }
+            if (user.memberId != memberId)                    { user.memberId = memberId; dirty = true }
+            if (dirty) kakaoUserRepository.save(user)
+            return user
+        }
+
+        return try {
+            kakaoUserRepository.saveAndFlush(
+                KakaoUser(kakaoId = userInfo.id, nickname = userInfo.nickname,
+                    profileImageUrl = userInfo.profileImageUrl, memberId = memberId)
+            )
+        } catch (e: DataIntegrityViolationException) {
+            // 동시 요청(React StrictMode 등)으로 이미 다른 요청이 먼저 저장함 → 그냥 읽어서 반환
+            log.warn("Concurrent login for kakaoId=${userInfo.id}, falling back to findById")
+            kakaoUserRepository.findById(userInfo.id).orElseThrow { e }
+        }
+    }
+
+    private fun fetchKakaoToken(code: String): String {
         val params = mutableListOf(
             "grant_type=authorization_code",
             "client_id=${URLEncoder.encode(restApiKey, StandardCharsets.UTF_8)}",
@@ -80,13 +93,12 @@ class KakaoAuthService(
         if (clientSecret.isNotBlank()) {
             params.add("client_secret=${URLEncoder.encode(clientSecret, StandardCharsets.UTF_8)}")
         }
-        val form = params.joinToString("&")
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(tokenUri))
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .POST(HttpRequest.BodyPublishers.ofString(form))
+            .POST(HttpRequest.BodyPublishers.ofString(params.joinToString("&")))
             .build()
 
         val response = http.send(request, HttpResponse.BodyHandlers.ofString())
