@@ -28,7 +28,6 @@ class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     // 인증 없이 허용
                     .requestMatchers(HttpMethod.POST, "/api/auth/kakao").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/auth/status/**").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
                     // 나머지는 JWT 필요
                     .anyRequest().authenticated()
