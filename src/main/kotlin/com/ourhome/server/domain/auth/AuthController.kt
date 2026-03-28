@@ -33,8 +33,8 @@ class AuthController(
     /** 현재 로그인한 유저 정보 조회 */
     @GetMapping("/me")
     fun me(@AuthenticationPrincipal claims: JwtClaims): ResponseEntity<MeResponse> {
-        val user = kakaoUserRepository.findById(claims.kakaoId)
-            .orElseThrow { IllegalArgumentException("User not found") }
+        val user = kakaoUserRepository.findByKakaoId(claims.kakaoId)
+            ?: throw IllegalArgumentException("User not found")
         return ResponseEntity.ok(MeResponse(
             kakaoId = user.kakaoId,
             memberId = user.memberId,

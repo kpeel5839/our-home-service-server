@@ -60,15 +60,14 @@ class KakaoAuthService(
      * React StrictMode 등 동시 요청으로 이미 저장된 경우 findById 로 fallback.
      */
     private fun findOrCreateUser(userInfo: KakaoUserInfo, memberId: String): KakaoUser {
-        val existing = kakaoUserRepository.findById(userInfo.id)
-        if (existing.isPresent) {
-            val user = existing.get()
+        val existing = kakaoUserRepository.findByKakaoId(userInfo.id)
+        if (existing != null) {
             var dirty = false
-            if (user.nickname != userInfo.nickname)           { user.nickname = userInfo.nickname; dirty = true }
-            if (user.profileImageUrl != userInfo.profileImageUrl) { user.profileImageUrl = userInfo.profileImageUrl; dirty = true }
-            if (user.memberId != memberId)                    { user.memberId = memberId; dirty = true }
-            if (dirty) kakaoUserRepository.save(user)
-            return user
+            if (existing.nickname != userInfo.nickname)               { existing.nickname = userInfo.nickname; dirty = true }
+            if (existing.profileImageUrl != userInfo.profileImageUrl) { existing.profileImageUrl = userInfo.profileImageUrl; dirty = true }
+            if (existing.memberId != memberId)                        { existing.memberId = memberId; dirty = true }
+            if (dirty) kakaoUserRepository.save(existing)
+            return existing
         }
 
         return try {
@@ -77,9 +76,9 @@ class KakaoAuthService(
                     profileImageUrl = userInfo.profileImageUrl, memberId = memberId)
             )
         } catch (e: DataIntegrityViolationException) {
-            // 동시 요청(React StrictMode 등)으로 이미 다른 요청이 먼저 저장함 → 그냥 읽어서 반환
-            log.warn("Concurrent login for kakaoId=${userInfo.id}, falling back to findById")
-            kakaoUserRepository.findById(userInfo.id).orElseThrow { e }
+            // 동시 요청(React StrictMode 등)으로 이미 다른 요청이 먼저 저장함 → 읽어서 반환
+            log.warn("Concurrent login for kakaoId=${userInfo.id}, falling back to findByKakaoId")
+            kakaoUserRepository.findByKakaoId(userInfo.id) ?: throw e
         }
     }
 

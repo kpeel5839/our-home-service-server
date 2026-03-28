@@ -1,11 +1,18 @@
 package com.ourhome.server.domain.auth
 
 import jakarta.persistence.*
+import java.util.UUID
 
 @Entity
-@Table(name = "kakao_users")
+@Table(
+    name = "kakao_users",
+    uniqueConstraints = [UniqueConstraint(columnNames = ["kakao_id"])]
+)
 class KakaoUser(
     @Id
+    val id: String = UUID.randomUUID().toString(),
+
+    @Column(name = "kakao_id", nullable = false)
     val kakaoId: String,
 
     var nickname: String,
