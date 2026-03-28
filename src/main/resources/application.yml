@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ourhomedb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+server:
+  port: 8080
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 카카오 알림 설정
+# access-token: 카카오 개발자 콘솔(developers.kakao.com)에서 발급한 REST API 키 또는
+#               카카오 로그인 액세스 토큰 (나에게 보내기 API 사용 시)
+# use-me-api:   true 이면 '나에게 보내기' API 사용 (기본값)
+# ──────────────────────────────────────────────────────────────────────────────
+kakao:
+  access-token: ${KAKAO_ACCESS_TOKEN:}
+  use-me-api: true
