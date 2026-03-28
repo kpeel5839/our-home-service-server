@@ -18,6 +18,7 @@ class KakaoAuthService(
     private val jwtService: JwtService,
     private val objectMapper: ObjectMapper,
     @Value("\${kakao.rest-api-key}") private val restApiKey: String,
+    @Value("\${kakao.client-secret:}") private val clientSecret: String,
     @Value("\${kakao.redirect-uri}") private val redirectUri: String,
     @Value("\${kakao.token-uri}") private val tokenUri: String,
     @Value("\${kakao.user-info-uri}") private val userInfoUri: String
@@ -70,12 +71,16 @@ class KakaoAuthService(
     }
 
     private fun fetchKakaoToken(code: String, redirectUri: String): String {
-        val form = listOf(
+        val params = mutableListOf(
             "grant_type=authorization_code",
             "client_id=${URLEncoder.encode(restApiKey, StandardCharsets.UTF_8)}",
             "redirect_uri=${URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)}",
             "code=${URLEncoder.encode(code, StandardCharsets.UTF_8)}"
-        ).joinToString("&")
+        )
+        if (clientSecret.isNotBlank()) {
+            params.add("client_secret=${URLEncoder.encode(clientSecret, StandardCharsets.UTF_8)}")
+        }
+        val form = params.joinToString("&")
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(tokenUri))
