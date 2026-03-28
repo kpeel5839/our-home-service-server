@@ -14,8 +14,7 @@ class KakaoUser(
 )
 
 data class KakaoLoginRequest(
-    val code: String,
-    val redirectUri: String
+    val code: String
 )
 
 data class AuthResponse(

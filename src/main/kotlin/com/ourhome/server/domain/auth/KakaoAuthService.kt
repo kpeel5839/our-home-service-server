@@ -18,6 +18,7 @@ class KakaoAuthService(
     private val jwtService: JwtService,
     private val objectMapper: ObjectMapper,
     @Value("\${kakao.rest-api-key}") private val restApiKey: String,
+    @Value("\${kakao.redirect-uri}") private val redirectUri: String,
     @Value("\${kakao.token-uri}") private val tokenUri: String,
     @Value("\${kakao.user-info-uri}") private val userInfoUri: String
 ) {
@@ -34,7 +35,7 @@ class KakaoAuthService(
         )
     }
 
-    fun login(code: String, redirectUri: String): AuthResponse {
+    fun login(code: String): AuthResponse {
         val kakaoToken = fetchKakaoToken(code, redirectUri)
         val userInfo = fetchKakaoUserInfo(kakaoToken)
 

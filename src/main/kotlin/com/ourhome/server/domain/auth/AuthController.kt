@@ -20,7 +20,7 @@ class AuthController(
     @PostMapping("/kakao")
     fun kakaoLogin(@RequestBody request: KakaoLoginRequest): ResponseEntity<*> {
         return try {
-            ResponseEntity.ok(kakaoAuthService.login(request.code, request.redirectUri))
+            ResponseEntity.ok(kakaoAuthService.login(request.code))
         } catch (e: IllegalStateException) {
             val (status, code, message) = when (e.message) {
                 "LOGIN_NOT_ALLOWED" -> Triple(HttpStatus.FORBIDDEN, "NOT_ALLOWED", "가족 구성원만 로그인할 수 있습니다.")
