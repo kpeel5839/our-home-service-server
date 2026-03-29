@@ -36,6 +36,18 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+sourceSets {
+    main {
+        resources {
+            srcDir("src/main/resources/config/backend")
+        }
+    }
+}
+
+tasks.withType<org.springframework.boot.gradle.tasks.run.BootRun> {
+    environment("SPRING_PROFILES_ACTIVE", "local")
+}
+
 tasks.withType<KotlinCompile> {
     kotlinOptions {
         freeCompilerArgs += "-Xjsr305=strict"
