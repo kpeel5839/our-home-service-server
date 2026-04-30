@@ -2,6 +2,8 @@ package com.ourhome.server.domain.vehicle
 
 import com.ourhome.server.config.ConflictException
 import com.ourhome.server.config.NotFoundException
+import com.ourhome.server.domain.member.MemberRepository
+import com.ourhome.server.domain.notification.DiscordNotificationService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -13,8 +15,22 @@ class VehicleController(
     private val vehicleRepository: VehicleRepository,
     private val reservationRepository: VehicleReservationRepository,
     private val fuelRepository: FuelRecordRepository,
-    private val parkingRepository: ParkingRecordRepository
+    private val parkingRepository: ParkingRecordRepository,
+    private val memberRepository: MemberRepository,
+    private val discordNotificationService: DiscordNotificationService
 ) {
+
+    private fun memberName(memberId: String): String =
+        memberRepository.findById(memberId).map { it.name }.orElse("알 수 없음")
+
+    private fun formatTime(isoTime: String): String =
+        if (isoTime.length >= 16) isoTime.substring(11, 16) else isoTime
+
+    private fun formatDate(dateStr: String): String {
+        val d = if (dateStr.length >= 10) dateStr.substring(0, 10) else dateStr
+        val parts = d.split("-")
+        return if (parts.size == 3) "${parts[0]}년 ${parts[1].trimStart('0')}월 ${parts[2].trimStart('0')}일" else d
+    }
 
     @GetMapping
     fun getVehicles(): ResponseEntity<List<VehicleResponse>> =
@@ -51,7 +67,13 @@ class VehicleController(
             endTime = request.endTime,
             purpose = request.purpose
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(reservationRepository.save(reservation).toResponse())
+        val saved = reservationRepository.save(reservation)
+        val name = memberName(request.memberId)
+        val dateStr = formatDate(request.startTime)
+        val timeStr = "${formatTime(request.startTime)}~${formatTime(request.endTime)}"
+        val purposePart = if (!request.purpose.isNullOrBlank()) "\n목적: ${request.purpose}" else ""
+        discordNotificationService.sendToAll("🚗 ${name}님이 차량을 예약했어요\n$dateStr $timeStr$purposePart")
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
     }
 
     @DeleteMapping("/{vehicleId}/reservations/{id}")
@@ -87,7 +109,23 @@ class VehicleController(
             amount = request.amount,
             stationName = request.stationName
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(fuelRepository.save(record).toResponse())
+        val savedFuel = fuelRepository.save(record)
+        val fuelName = memberName(request.memberId)
+        val stationPart = if (!request.stationName.isNullOrBlank()) "\n주유소: ${request.stationName}" else ""
+        val amountFormatted = "%,d".format(request.amount)
+        discordNotificationService.sendToAllMembers("⛽ ${fuelName}님이 주유를 기록했어요\n${request.liters}L / ${amountFormatted}원$stationPart")
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedFuel.toResponse())
+    }
+
+    @DeleteMapping("/{vehicleId}/fuel/{id}")
+    fun deleteFuelRecord(
+        @PathVariable vehicleId: String,
+        @PathVariable id: String
+    ): ResponseEntity<Void> {
+        val record = fuelRepository.findById(id).orElseThrow { NotFoundException("Fuel record not found: $id") }
+        if (record.vehicleId != vehicleId) throw NotFoundException("Fuel record not found for this vehicle")
+        fuelRepository.deleteById(id)
+        return ResponseEntity.noContent().build()
     }
 
     // ─── Parking Records ─────────────────────────────────────────────────────
@@ -98,6 +136,17 @@ class VehicleController(
         val record = parkingRepository.findTopByVehicleIdOrderByRecordedAtDesc(vehicleId)
             ?: throw NotFoundException("No parking record found for vehicle: $vehicleId")
         return ResponseEntity.ok(record.toResponse())
+    }
+
+    @DeleteMapping("/{vehicleId}/parking/{id}")
+    fun deleteParkingRecord(
+        @PathVariable vehicleId: String,
+        @PathVariable id: String
+    ): ResponseEntity<Void> {
+        val record = parkingRepository.findById(id).orElseThrow { NotFoundException("Parking record not found: $id") }
+        if (record.vehicleId != vehicleId) throw NotFoundException("Parking record not found for this vehicle")
+        parkingRepository.deleteById(id)
+        return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/{vehicleId}/parking")
@@ -114,6 +163,11 @@ class VehicleController(
             memo = request.memo,
             recordedAt = Instant.now().toString()
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(parkingRepository.save(record).toResponse())
+        val savedParking = parkingRepository.save(record)
+        val parkName = memberName(request.memberId)
+        val zonePart = if (!request.zone.isNullOrBlank()) " ${request.zone}구역" else ""
+        val memoPart = if (!request.memo.isNullOrBlank()) "\n메모: ${request.memo}" else ""
+        discordNotificationService.sendToAllMembers("🅿️ ${parkName}님이 주차 위치를 기록했어요\n${request.floor}$zonePart$memoPart")
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedParking.toResponse())
     }
 }
