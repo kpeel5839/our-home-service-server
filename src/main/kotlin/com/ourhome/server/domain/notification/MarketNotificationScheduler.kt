@@ -23,7 +23,7 @@ class MarketNotificationScheduler(
         try {
             val data = marketDataService.fetchAllMarketData()
             val message = buildMessage(data)
-            discordNotificationService.sendMessage(message)
+            discordNotificationService.sendToAll(message)
         } catch (e: Exception) {
             log.error("[MarketNotification] 알림 전송 실패: ${e.message}", e)
         }

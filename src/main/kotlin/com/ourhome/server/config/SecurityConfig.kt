@@ -28,6 +28,7 @@ class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     // 인증 없이 허용
                     .requestMatchers(HttpMethod.POST, "/api/auth/kakao").permitAll()
+                    .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers("/h2-console/**").permitAll()
                     // 나머지는 JWT 필요
                     .anyRequest().authenticated()
@@ -41,7 +42,11 @@ class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val config = CorsConfiguration().apply {
-            allowedOriginPatterns = listOf("http://localhost:3000", "https://*.vercel.app")
+            allowedOriginPatterns = listOf(
+                "http://localhost:3000",
+                "https://*.vercel.app",
+                "https://kpeel-home-service.p-e.kr"
+            )
             allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true

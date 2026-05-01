@@ -1,6 +1,9 @@
 package com.ourhome.server.domain.stock
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.net.URI
@@ -15,19 +18,28 @@ class StockService(
     private val objectMapper: ObjectMapper
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+    private val http = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(5))
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .build()
 
-    fun getAll(): List<StockPriceResponse> =
-        stockRepository.findAll()
-            .sortedBy { it.displayOrder }
-            .mapNotNull { stock ->
-                try {
-                    fetchPrice(stock)
-                } catch (e: Exception) {
-                    log.warn("주가 조회 실패 - symbol=${stock.symbol}: ${e.message}")
-                    null
+    fun getAll(): List<StockPriceResponse> {
+        val stocks = stockRepository.findAll().sortedBy { it.displayOrder }
+        if (stocks.isEmpty()) return emptyList()
+
+        return runBlocking {
+            stocks.map { stock ->
+                async(Dispatchers.IO) {
+                    try {
+                        fetchPrice(stock)
+                    } catch (e: Exception) {
+                        log.warn("주가 조회 실패 - symbol=${stock.symbol}: ${e.message}")
+                        null
+                    }
                 }
-            }
+            }.mapNotNull { it.await() }
+        }
+    }
 
     fun add(req: AddStockRequest): TrackedStock {
         val stock = TrackedStock(

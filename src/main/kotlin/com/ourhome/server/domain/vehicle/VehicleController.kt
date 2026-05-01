@@ -4,6 +4,7 @@ import com.ourhome.server.config.ConflictException
 import com.ourhome.server.config.NotFoundException
 import com.ourhome.server.domain.member.MemberRepository
 import com.ourhome.server.domain.notification.DiscordNotificationService
+import com.ourhome.server.domain.member.MemberRole
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -72,19 +73,42 @@ class VehicleController(
         val dateStr = formatDate(request.startTime)
         val timeStr = "${formatTime(request.startTime)}~${formatTime(request.endTime)}"
         val purposePart = if (!request.purpose.isNullOrBlank()) "\n목적: ${request.purpose}" else ""
-        discordNotificationService.sendToAll("🚗 ${name}님이 차량을 예약했어요\n$dateStr $timeStr$purposePart")
+        discordNotificationService.sendToRole("FATHER",
+            "🚗 ${name}님이 차량 예약을 요청했어요\n$dateStr $timeStr$purposePart\n\n✅ 승인하려면 아래 API를 호출해주세요:\nPATCH /api/vehicles/$vehicleId/reservations/${saved.id}/approve\n{\"approverId\": \"m1\"}"
+        )
         return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
     }
 
     @DeleteMapping("/{vehicleId}/reservations/{id}")
     fun deleteReservation(
         @PathVariable vehicleId: String,
-        @PathVariable id: String
+        @PathVariable id: String,
+        @RequestParam memberId: String
     ): ResponseEntity<Void> {
         val reservation = reservationRepository.findById(id).orElseThrow { NotFoundException("Reservation not found: $id") }
         if (reservation.vehicleId != vehicleId) throw NotFoundException("Reservation not found for this vehicle")
+        if (reservation.memberId != memberId) throw ForbiddenException("본인이 만든 예약만 삭제할 수 있습니다")
         reservationRepository.deleteById(id)
         return ResponseEntity.noContent().build()
+    }
+
+    @PatchMapping("/{vehicleId}/reservations/{id}/approve")
+    fun approveReservation(
+        @PathVariable vehicleId: String,
+        @PathVariable id: String,
+        @RequestBody request: ApproveReservationRequest
+    ): ResponseEntity<ReservationResponse> {
+        val approver = memberRepository.findById(request.approverId).orElseThrow { NotFoundException("Member not found: ${request.approverId}") }
+        if (approver.role != MemberRole.FATHER) throw ForbiddenException("아빠만 차량 예약을 승인할 수 있습니다")
+        val reservation = reservationRepository.findById(id).orElseThrow { NotFoundException("Reservation not found: $id") }
+        if (reservation.vehicleId != vehicleId) throw NotFoundException("Reservation not found for this vehicle")
+        reservation.approved = true
+        val saved = reservationRepository.save(reservation)
+        val requesterName = memberName(reservation.memberId)
+        val dateStr = formatDate(reservation.startTime)
+        val timeStr = "${formatTime(reservation.startTime)}~${formatTime(reservation.endTime)}"
+        discordNotificationService.sendToAllMembers("✅ ${requesterName}님의 차량 예약이 승인되었어요\n$dateStr $timeStr")
+        return ResponseEntity.ok(saved.toResponse())
     }
 
     // ─── Fuel Records ────────────────────────────────────────────────────────

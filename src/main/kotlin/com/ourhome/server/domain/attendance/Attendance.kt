@@ -38,6 +38,7 @@ data class CreateAttendanceRequest(
 data class UpdateAttendanceRequest(
     val status: AttendanceStatusType? = null,
     val expectedReturnTime: String? = null,
+    val clearReturnTime: Boolean? = null,
     val memo: String? = null
 )
 

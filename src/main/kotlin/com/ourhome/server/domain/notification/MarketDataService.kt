@@ -1,6 +1,9 @@
 package com.ourhome.server.domain.notification
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.net.URI
@@ -10,16 +13,20 @@ import java.net.http.HttpResponse
 import java.time.Duration
 
 /**
- * Naver Finance 공개 API를 통해 시장 데이터를 수집합니다.
- * API Key 불필요, 별도 인프라 없이 동작합니다.
+ * 시장 데이터 수집 서비스
+ * - 주가지수 / 환율: Yahoo Finance v8 Chart API
+ * - 미국 국채(10년·2년) / 한국 국채(10년): CNBC Quote API (단일 요청)
+ * - 한국 국채(3년): Naver Finance interestDailyQuote HTML 파싱
+ * - 모든 HTTP 요청은 코루틴으로 병렬 처리
  */
 @Service
 class MarketDataService(private val objectMapper: ObjectMapper) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val httpClient = HttpClient.newBuilder()
+    private val http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(5))
+        .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
 
     data class MarketData(
@@ -32,117 +39,156 @@ class MarketDataService(private val objectMapper: ObjectMapper) {
     data class ExchangeData(val name: String, val value: String, val change: String)
     data class BondData(val name: String, val value: String)
 
-    fun fetchAllMarketData(): MarketData {
-        val indices = fetchStockIndices()
-        val fx = fetchExchangeRates()
-        val bonds = fetchBondRates()
-        return MarketData(indices, fx, bonds)
+    fun fetchAllMarketData(): MarketData = runBlocking {
+        // 모든 요청 병렬 실행
+        val kospiD = async(Dispatchers.IO) { yahooIndex("KOSPI", "^KS11") }
+        val nasdaqD = async(Dispatchers.IO) { yahooIndex("NASDAQ", "^IXIC") }
+        val sp500D = async(Dispatchers.IO) { yahooIndex("S&P500", "^GSPC") }
+
+        val usdD = async(Dispatchers.IO) { yahooFx("USD/KRW", "USDKRW=X") }
+        val eurD = async(Dispatchers.IO) { yahooFx("EUR/KRW", "EURKRW=X") }
+        val jpyD = async(Dispatchers.IO) { yahooFx("JPY/KRW", "JPYKRW=X") }
+        val dxyD = async(Dispatchers.IO) { yahooFx("DXY", "DX-Y.NYB") }
+
+        // CNBC API: US 10Y/2Y + 한국 10Y 한 번에 (3개 심볼 단일 요청)
+        val cnbcD = async(Dispatchers.IO) { fetchCnbcBonds() }
+        // 한국 3년 국채: Naver Finance
+        val kr3yD = async(Dispatchers.IO) { naverBond("한국 국채 3년", "IRR_GOVT03Y") }
+
+        val cnbcBonds = cnbcD.await()
+
+        MarketData(
+            stockIndices = linkedMapOf(
+                "KOSPI" to kospiD.await(),
+                "NASDAQ" to nasdaqD.await(),
+                "S&P500" to sp500D.await()
+            ),
+            exchangeRates = linkedMapOf(
+                "USD/KRW" to usdD.await(),
+                "EUR/KRW" to eurD.await(),
+                "JPY/KRW" to jpyD.await(),
+                "DXY" to dxyD.await()
+            ),
+            bondRates = linkedMapOf(
+                "한국 국채 10년" to (cnbcBonds["KR10Y-KR"] ?: BondData("한국 국채 10년", "N/A")),
+                "한국 국채 3년" to kr3yD.await(),
+                "미국 국채 10년" to (cnbcBonds["US10Y-US"] ?: BondData("미국 국채 10년", "N/A")),
+                "미국 국채 2년" to (cnbcBonds["US2Y-US"] ?: BondData("미국 국채 2년", "N/A"))
+            )
+        )
     }
 
-    private fun fetchStockIndices(): Map<String, IndexData> {
-        // Naver Finance 시세 API
-        val symbols = mapOf(
-            "KOSPI" to "KOSPI",
-            "NASDAQ" to "NAS",
-            "S&P500" to "SPI@SPX"
+    // ── Yahoo Finance ────────────────────────────────────────────────────────
+
+    private fun yahooIndex(name: String, symbol: String): IndexData = runCatching {
+        val (price, change, pct) = yahooQuote(symbol)
+        IndexData(name, fmtNumber(price), fmtChange(change), fmtPct(pct))
+    }.getOrElse {
+        log.warn("[Market] $name ($symbol): ${it.message}")
+        IndexData(name, "N/A", "N/A", "N/A")
+    }
+
+    private fun yahooFx(name: String, symbol: String): ExchangeData = runCatching {
+        val (price, change, _) = yahooQuote(symbol)
+        val value = if (name.endsWith("/KRW")) fmtNumber(price) else fmtDecimal(price)
+        ExchangeData(name, value, fmtChange(change))
+    }.getOrElse {
+        log.warn("[Market] $name ($symbol): ${it.message}")
+        ExchangeData(name, "N/A", "N/A")
+    }
+
+    private fun yahooQuote(symbol: String): Triple<Double, Double, Double> {
+        val encoded = symbol.replace("^", "%5E")
+        val body = get("https://query1.finance.yahoo.com/v8/finance/chart/$encoded?interval=1d&range=1d")
+        val meta = objectMapper.readTree(body)
+            .path("chart").path("result").firstOrNull()?.path("meta")
+            ?: error("result 없음: $symbol")
+
+        val price = meta.path("regularMarketPrice").asDouble(Double.NaN)
+        val prevClose = meta.path("chartPreviousClose").asDouble(Double.NaN)
+        check(!price.isNaN() && !prevClose.isNaN() && prevClose != 0.0) {
+            "유효하지 않은 가격: $symbol"
+        }
+        return Triple(price, price - prevClose, (price - prevClose) / prevClose * 100.0)
+    }
+
+    // ── CNBC Quote API ───────────────────────────────────────────────────────
+
+    /**
+     * CNBC API로 KR10Y-KR / US10Y-US / US2Y-US 한 번에 조회
+     * last 필드: "3.916%" 형태 → 그대로 표시
+     */
+    private fun fetchCnbcBonds(): Map<String, BondData> {
+        val displayNames = mapOf(
+            "KR10Y-KR" to "한국 국채 10년",
+            "US10Y-US" to "미국 국채 10년",
+            "US2Y-US" to "미국 국채 2년"
         )
-        val result = mutableMapOf<String, IndexData>()
-        symbols.forEach { (displayName, code) ->
-            try {
-                val url = "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:$code"
-                val body = get(url, mapOf("Referer" to "https://finance.naver.com"))
-                val node = objectMapper.readTree(body)
-                val item = node.path("result").path("areas").firstOrNull()
-                    ?.path("datas")?.firstOrNull()
-                if (item != null && !item.isMissingNode) {
-                    result[displayName] = IndexData(
-                        name = displayName,
-                        value = formatNumber(item.path("nv").asText("")),
-                        change = item.path("cv").asText("0"),
-                        changeRate = item.path("cr").asText("0") + "%"
-                    )
+        return try {
+            val symbols = displayNames.keys.joinToString("%7C")
+            val url = "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol" +
+                    "?symbols=$symbols&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1"
+            val body = get(url)
+            val quotes = objectMapper.readTree(body)
+                .path("FormattedQuoteResult").path("FormattedQuote")
+
+            val result = mutableMapOf<String, BondData>()
+            quotes.forEach { q ->
+                val sym = q.path("symbol").asText()
+                val last = q.path("last").asText()
+                if (sym.isNotEmpty() && last.isNotEmpty() && last != "null") {
+                    val displayName = displayNames[sym] ?: sym
+                    // last 값이 이미 "3.916%" 형태이므로 그대로 사용
+                    result[sym] = BondData(displayName, last)
                 }
-            } catch (e: Exception) {
-                log.warn("Failed to fetch $displayName: ${e.message}")
-                result[displayName] = IndexData(displayName, "N/A", "N/A", "N/A")
             }
+            result
+        } catch (e: Exception) {
+            log.warn("[Market] CNBC 국채 조회 실패: ${e.message}")
+            emptyMap()
         }
-        return result
     }
 
-    private fun fetchExchangeRates(): Map<String, ExchangeData> {
-        // Naver Finance 환율 API
-        val codes = mapOf(
-            "USD/KRW" to "FX_USDKRW",
-            "EUR/KRW" to "FX_EURKRW",
-            "JPY/KRW" to "FX_JPYKRW",
-            "CNY/KRW" to "FX_CNYKRW",
-            "DXY" to "FX_USDIDX"
-        )
-        val result = mutableMapOf<String, ExchangeData>()
-        codes.forEach { (displayName, code) ->
-            try {
-                val url = "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:$code"
-                val body = get(url, mapOf("Referer" to "https://finance.naver.com"))
-                val node = objectMapper.readTree(body)
-                val item = node.path("result").path("areas").firstOrNull()
-                    ?.path("datas")?.firstOrNull()
-                if (item != null && !item.isMissingNode) {
-                    result[displayName] = ExchangeData(
-                        name = displayName,
-                        value = item.path("nv").asText("N/A"),
-                        change = item.path("cv").asText("0")
-                    )
-                }
-            } catch (e: Exception) {
-                log.warn("Failed to fetch $displayName: ${e.message}")
-                result[displayName] = ExchangeData(displayName, "N/A", "N/A")
-            }
-        }
-        return result
+    // ── Naver Finance (한국 3년 국채) ────────────────────────────────────────
+
+    /**
+     * Naver Finance interestDailyQuote HTML에서 금리 파싱 (EUC-KR)
+     * marketindexCd: IRR_GOVT03Y 등
+     */
+    private fun naverBond(name: String, code: String): BondData = runCatching {
+        val url = "https://finance.naver.com/marketindex/interestDailyQuote.naver?marketindexCd=$code&page=1"
+        val raw = getRaw(url, mapOf("Referer" to "https://finance.naver.com/marketindex/"))
+        val html = raw.toString(java.nio.charset.Charset.forName("EUC-KR"))
+
+        // class="num">3.58 형태에서 첫 번째 숫자 추출
+        val match = Regex("""class="num">([0-9.]+)""").find(html)
+            ?: error("금리 파싱 실패: $code")
+        val rate = match.groupValues[1]
+        BondData(name, "$rate%")
+    }.getOrElse {
+        log.warn("[Market] $name ($code) Naver: ${it.message}")
+        BondData(name, "N/A")
     }
 
-    private fun fetchBondRates(): Map<String, BondData> {
-        // 국채 금리 — Naver Finance 채권 시세
-        val bonds = mapOf(
-            "한국 국채 10년" to "MMFS@KR10YT=RR",
-            "한국 국채 3년" to "MMFS@KR3YT=RR",
-            "미국 국채 10년" to "MMFS@US10YT=RR",
-            "미국 국채 2년" to "MMFS@US2YT=RR"
-        )
-        val result = mutableMapOf<String, BondData>()
-        bonds.forEach { (displayName, code) ->
-            try {
-                val url = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:$code"
-                val body = get(url, mapOf("Referer" to "https://finance.naver.com"))
-                val node = objectMapper.readTree(body)
-                val item = node.path("result").path("areas").firstOrNull()
-                    ?.path("datas")?.firstOrNull()
-                val value = if (item != null && !item.isMissingNode) item.path("nv").asText("N/A") else "N/A"
-                result[displayName] = BondData(displayName, "$value%")
-            } catch (e: Exception) {
-                log.warn("Failed to fetch $displayName: ${e.message}")
-                result[displayName] = BondData(displayName, "N/A")
-            }
-        }
-        return result
-    }
+    // ── HTTP 헬퍼 ────────────────────────────────────────────────────────────
 
-    private fun get(url: String, headers: Map<String, String> = emptyMap()): String {
+    private fun get(url: String, extraHeaders: Map<String, String> = emptyMap()): String =
+        getRaw(url, extraHeaders).toString(Charsets.UTF_8)
+
+    private fun getRaw(url: String, extraHeaders: Map<String, String> = emptyMap()): ByteArray {
         val builder = HttpRequest.newBuilder()
             .uri(URI.create(url))
             .timeout(Duration.ofSeconds(10))
-            .GET()
-        headers.forEach { (k, v) -> builder.header(k, v) }
-        builder.header("User-Agent", "Mozilla/5.0 (compatible; OurHomeService/1.0)")
-        val response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString())
-        return response.body()
+            .header("User-Agent", "Mozilla/5.0 (compatible; OurHomeService/1.0)")
+            .header("Accept", "*/*")
+        extraHeaders.forEach { (k, v) -> builder.header(k, v) }
+        return http.send(builder.GET().build(), HttpResponse.BodyHandlers.ofByteArray()).body()
     }
 
-    private fun formatNumber(value: String): String = try {
-        val d = value.toDouble()
-        String.format("%,.2f", d)
-    } catch (e: NumberFormatException) {
-        value
-    }
+    // ── 포맷 헬퍼 ────────────────────────────────────────────────────────────
+
+    private fun fmtNumber(v: Double) = String.format("%,.2f", v)
+    private fun fmtDecimal(v: Double) = String.format("%.2f", v)
+    private fun fmtChange(v: Double) = (if (v >= 0) "+" else "") + String.format("%.2f", v)
+    private fun fmtPct(v: Double) = (if (v >= 0) "+" else "") + String.format("%.2f", v) + "%"
 }

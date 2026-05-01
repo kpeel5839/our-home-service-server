@@ -17,8 +17,18 @@ class TrashController(
         ResponseEntity.ok(trashRuleRepository.findAll().map { it.toResponse() })
 
     @GetMapping("/schedules")
-    fun getSchedules(@RequestParam date: String): ResponseEntity<List<TrashScheduleResponse>> =
-        ResponseEntity.ok(trashScheduleRepository.findByDate(date).map { it.toResponse() })
+    fun getSchedules(
+        @RequestParam(required = false) date: String?,
+        @RequestParam(required = false) from: String?,
+        @RequestParam(required = false) to: String?
+    ): ResponseEntity<List<TrashScheduleResponse>> {
+        val result = when {
+            from != null && to != null -> trashScheduleRepository.findByDateBetweenOrderByDate(from, to)
+            date != null -> trashScheduleRepository.findByDate(date)
+            else -> emptyList()
+        }
+        return ResponseEntity.ok(result.map { it.toResponse() })
+    }
 
     @PostMapping("/schedules")
     fun createSchedule(@RequestBody request: CreateTrashScheduleRequest): ResponseEntity<TrashScheduleResponse> {
@@ -35,5 +45,12 @@ class TrashController(
         val schedule = trashScheduleRepository.findById(id).orElseThrow { NotFoundException("Schedule not found: $id") }
         schedule.isCompleted = !schedule.isCompleted
         return ResponseEntity.ok(trashScheduleRepository.save(schedule).toResponse())
+    }
+
+    @DeleteMapping("/schedules/{id}")
+    fun deleteSchedule(@PathVariable id: String): ResponseEntity<Void> {
+        if (!trashScheduleRepository.existsById(id)) throw NotFoundException("Schedule not found: $id")
+        trashScheduleRepository.deleteById(id)
+        return ResponseEntity.noContent().build()
     }
 }
