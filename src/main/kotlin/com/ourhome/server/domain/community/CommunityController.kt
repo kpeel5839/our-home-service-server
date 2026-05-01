@@ -1,6 +1,8 @@
 package com.ourhome.server.domain.community
 
 import com.ourhome.server.config.NotFoundException
+import com.ourhome.server.domain.member.MemberRepository
+import com.ourhome.server.domain.notification.DiscordNotificationService
 import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -10,7 +12,9 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/posts")
 class CommunityController(
     private val postRepository: PostRepository,
-    private val commentRepository: CommentRepository
+    private val commentRepository: CommentRepository,
+    private val memberRepository: MemberRepository,
+    private val discordNotificationService: DiscordNotificationService
 ) {
 
     @GetMapping
@@ -44,7 +48,12 @@ class CommunityController(
             content = request.content,
             images = request.images.toMutableList()
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(postRepository.save(post).toResponse())
+        val saved = postRepository.save(post)
+        val authorName = memberRepository.findById(request.authorId).map { it.name }.orElse("가족")
+        val imagePart = if (request.images.isNotEmpty()) " 📷 사진 ${request.images.size}장" else ""
+        val preview = if (request.content.length > 50) request.content.take(50) + "..." else request.content
+        discordNotificationService.sendToAllMembers("📝 ${authorName}님이 피드를 올렸어요$imagePart\n$preview")
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
     }
 
     @GetMapping("/{id}")
