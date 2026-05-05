@@ -17,12 +17,6 @@ class TrashSchedule(
     @Column(nullable = false)
     val memberId: String,
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "trash_schedule_types", joinColumns = [JoinColumn(name = "schedule_id")])
-    @Enumerated(EnumType.STRING)
-    @Column(name = "trash_type")
-    val trashTypes: MutableList<TrashType> = mutableListOf(),
-
     var isCompleted: Boolean = false
 )
 
@@ -46,7 +40,6 @@ data class TrashScheduleResponse(
     val id: String,
     val date: String,
     val memberId: String,
-    val trashTypes: List<String>,
     val isCompleted: Boolean
 )
 
@@ -58,13 +51,11 @@ data class ApartmentTrashRuleResponse(
 
 data class CreateTrashScheduleRequest(
     val date: String,
-    val memberId: String,
-    val trashTypes: List<TrashType>
+    val memberId: String
 )
 
 fun TrashSchedule.toResponse() = TrashScheduleResponse(
-    id = id, date = date, memberId = memberId,
-    trashTypes = trashTypes.map { it.name }, isCompleted = isCompleted
+    id = id, date = date, memberId = memberId, isCompleted = isCompleted
 )
 
 fun ApartmentTrashRule.toResponse() = ApartmentTrashRuleResponse(

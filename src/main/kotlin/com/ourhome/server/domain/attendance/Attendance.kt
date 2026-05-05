@@ -31,7 +31,7 @@ data class AttendanceResponse(
 )
 
 data class CreateAttendanceRequest(
-    val date: String, val memberId: String, val status: AttendanceStatusType,
+    val date: String, val status: AttendanceStatusType,
     val expectedReturnTime: String? = null, val memo: String? = null
 )
 

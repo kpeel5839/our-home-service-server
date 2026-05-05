@@ -1,10 +1,13 @@
 package com.ourhome.server.domain.vehicle
 
 import com.ourhome.server.config.ConflictException
+import com.ourhome.server.config.ForbiddenException
 import com.ourhome.server.config.NotFoundException
+import com.ourhome.server.config.SecurityUtils
 import com.ourhome.server.domain.member.MemberRepository
-import com.ourhome.server.domain.notification.DiscordNotificationService
 import com.ourhome.server.domain.member.MemberRole
+import com.ourhome.server.domain.notification.DiscordNotificationService
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -18,7 +21,8 @@ class VehicleController(
     private val fuelRepository: FuelRecordRepository,
     private val parkingRepository: ParkingRecordRepository,
     private val memberRepository: MemberRepository,
-    private val discordNotificationService: DiscordNotificationService
+    private val discordNotificationService: DiscordNotificationService,
+    @Value("\${domain:localhost:3000}") private val domain: String
 ) {
 
     private fun memberName(memberId: String): String =
@@ -56,25 +60,27 @@ class VehicleController(
         @PathVariable vehicleId: String,
         @RequestBody request: CreateReservationRequest
     ): ResponseEntity<ReservationResponse> {
+        val memberId = SecurityUtils.currentMemberId()
         if (!vehicleRepository.existsById(vehicleId)) throw NotFoundException("Vehicle not found: $vehicleId")
+        if (request.startTime >= request.endTime) throw IllegalArgumentException("종료 시간이 시작 시간보다 빨라요")
         val conflicts = reservationRepository.findByVehicleIdAndStartTimeLessThanAndEndTimeGreaterThan(
             vehicleId, request.endTime, request.startTime
         )
         if (conflicts.isNotEmpty()) throw ConflictException("Reservation time conflicts with existing reservation")
         val reservation = VehicleReservation(
             vehicleId = vehicleId,
-            memberId = request.memberId,
+            memberId = memberId,
             startTime = request.startTime,
             endTime = request.endTime,
             purpose = request.purpose
         )
         val saved = reservationRepository.save(reservation)
-        val name = memberName(request.memberId)
+        val name = memberName(memberId)
         val dateStr = formatDate(request.startTime)
         val timeStr = "${formatTime(request.startTime)}~${formatTime(request.endTime)}"
         val purposePart = if (!request.purpose.isNullOrBlank()) "\n목적: ${request.purpose}" else ""
         discordNotificationService.sendToRole("FATHER",
-            "🚗 ${name}님이 차량 예약을 요청했어요\n$dateStr $timeStr$purposePart\n\n✅ 승인하려면 아래 API를 호출해주세요:\nPATCH /api/vehicles/$vehicleId/reservations/${saved.id}/approve\n{\"approverId\": \"m1\"}"
+            "🚗 ${name}님이 차량 예약을 요청했어요\n$dateStr $timeStr$purposePart\n\n✅ 앱에서 승인해주세요: https://$domain/vehicle/reserve"
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
     }
@@ -82,9 +88,9 @@ class VehicleController(
     @DeleteMapping("/{vehicleId}/reservations/{id}")
     fun deleteReservation(
         @PathVariable vehicleId: String,
-        @PathVariable id: String,
-        @RequestParam memberId: String
+        @PathVariable id: String
     ): ResponseEntity<Void> {
+        val memberId = SecurityUtils.currentMemberId()
         val reservation = reservationRepository.findById(id).orElseThrow { NotFoundException("Reservation not found: $id") }
         if (reservation.vehicleId != vehicleId) throw NotFoundException("Reservation not found for this vehicle")
         if (reservation.memberId != memberId) throw ForbiddenException("본인이 만든 예약만 삭제할 수 있습니다")
@@ -95,10 +101,10 @@ class VehicleController(
     @PatchMapping("/{vehicleId}/reservations/{id}/approve")
     fun approveReservation(
         @PathVariable vehicleId: String,
-        @PathVariable id: String,
-        @RequestBody request: ApproveReservationRequest
+        @PathVariable id: String
     ): ResponseEntity<ReservationResponse> {
-        val approver = memberRepository.findById(request.approverId).orElseThrow { NotFoundException("Member not found: ${request.approverId}") }
+        val approverId = SecurityUtils.currentMemberId()
+        val approver = memberRepository.findById(approverId).orElseThrow { NotFoundException("Member not found: $approverId") }
         if (approver.role != MemberRole.FATHER) throw ForbiddenException("아빠만 차량 예약을 승인할 수 있습니다")
         val reservation = reservationRepository.findById(id).orElseThrow { NotFoundException("Reservation not found: $id") }
         if (reservation.vehicleId != vehicleId) throw NotFoundException("Reservation not found for this vehicle")
@@ -124,17 +130,18 @@ class VehicleController(
         @PathVariable vehicleId: String,
         @RequestBody request: CreateFuelRecordRequest
     ): ResponseEntity<FuelRecordResponse> {
+        val memberId = SecurityUtils.currentMemberId()
         if (!vehicleRepository.existsById(vehicleId)) throw NotFoundException("Vehicle not found: $vehicleId")
         val record = FuelRecord(
             vehicleId = vehicleId,
-            memberId = request.memberId,
+            memberId = memberId,
             date = request.date,
             liters = request.liters,
             amount = request.amount,
             stationName = request.stationName
         )
         val savedFuel = fuelRepository.save(record)
-        val fuelName = memberName(request.memberId)
+        val fuelName = memberName(memberId)
         val stationPart = if (!request.stationName.isNullOrBlank()) "\n주유소: ${request.stationName}" else ""
         val amountFormatted = "%,d".format(request.amount)
         discordNotificationService.sendToAllMembers("⛽ ${fuelName}님이 주유를 기록했어요\n${request.liters}L / ${amountFormatted}원$stationPart")
@@ -178,17 +185,18 @@ class VehicleController(
         @PathVariable vehicleId: String,
         @RequestBody request: CreateParkingRecordRequest
     ): ResponseEntity<ParkingRecordResponse> {
+        val memberId = SecurityUtils.currentMemberId()
         if (!vehicleRepository.existsById(vehicleId)) throw NotFoundException("Vehicle not found: $vehicleId")
         val record = ParkingRecord(
             vehicleId = vehicleId,
-            memberId = request.memberId,
+            memberId = memberId,
             floor = request.floor,
             zone = request.zone,
             memo = request.memo,
             recordedAt = Instant.now().toString()
         )
         val savedParking = parkingRepository.save(record)
-        val parkName = memberName(request.memberId)
+        val parkName = memberName(memberId)
         val zonePart = if (!request.zone.isNullOrBlank()) " ${request.zone}구역" else ""
         val memoPart = if (!request.memo.isNullOrBlank()) "\n메모: ${request.memo}" else ""
         discordNotificationService.sendToAllMembers("🅿️ ${parkName}님이 주차 위치를 기록했어요\n${request.floor}$zonePart$memoPart")

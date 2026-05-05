@@ -49,7 +49,7 @@ data class FridgeItemResponse(
 )
 
 data class CreateFridgeItemRequest(
-    val registeredBy: String, val name: String, val category: FridgeCategory,
+    val name: String, val category: FridgeCategory,
     val quantity: Int, val unit: String, val expirationDate: String, val storageType: StorageType
 )
 

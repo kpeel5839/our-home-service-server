@@ -34,8 +34,7 @@ class TrashController(
     fun createSchedule(@RequestBody request: CreateTrashScheduleRequest): ResponseEntity<TrashScheduleResponse> {
         val schedule = TrashSchedule(
             date = request.date,
-            memberId = request.memberId,
-            trashTypes = request.trashTypes.toMutableList()
+            memberId = request.memberId
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(trashScheduleRepository.save(schedule).toResponse())
     }
@@ -49,7 +48,7 @@ class TrashController(
 
     @DeleteMapping("/schedules/{id}")
     fun deleteSchedule(@PathVariable id: String): ResponseEntity<Void> {
-        if (!trashScheduleRepository.existsById(id)) throw NotFoundException("Schedule not found: $id")
+        trashScheduleRepository.findById(id).orElseThrow { NotFoundException("Schedule not found: $id") }
         trashScheduleRepository.deleteById(id)
         return ResponseEntity.noContent().build()
     }

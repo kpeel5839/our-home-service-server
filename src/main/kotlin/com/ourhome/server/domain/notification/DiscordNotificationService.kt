@@ -1,12 +1,12 @@
 package com.ourhome.server.domain.notification
 
 import org.slf4j.LoggerFactory
+import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.util.concurrent.CompletableFuture
 import java.time.Duration
 
 @Service
@@ -19,6 +19,7 @@ class DiscordNotificationService(private val props: DiscordProperties) {
         .build()
 
     /** 기본 웹훅으로 전송 (기존 동작 유지) */
+    @Async
     fun sendMessage(content: String) {
         send(props.webhookUrl, content)
     }
@@ -27,6 +28,7 @@ class DiscordNotificationService(private val props: DiscordProperties) {
      * 특정 멤버 역할(SON/DAUGHTER/FATHER/MOTHER)의 웹훅으로 전송.
      * 해당 역할 웹훅이 없으면 기본 웹훅으로 폴백.
      */
+    @Async
     fun sendToRole(role: String, content: String) {
         val url = props.memberWebhooks[role.uppercase()]
             ?: props.webhookUrl.takeIf { it.isNotBlank() }
@@ -35,6 +37,7 @@ class DiscordNotificationService(private val props: DiscordProperties) {
     }
 
     /** 가족 멤버 웹훅으로만 전송 (주차·주유·외박 등 생활 알림용) */
+    @Async
     fun sendToAllMembers(content: String) {
         val urls = props.memberWebhooks.values.toSet()
             .ifEmpty { setOf(props.webhookUrl) }
@@ -43,6 +46,7 @@ class DiscordNotificationService(private val props: DiscordProperties) {
     }
 
     /** 가족 멤버 웹훅 + market 웹훅으로 전송 (차량 예약·주식 알림용) */
+    @Async
     fun sendToAll(content: String) {
         val urls = (props.memberWebhooks.values + listOfNotNull(props.marketWebhookUrl.takeIf { it.isNotBlank() }))
             .toSet()

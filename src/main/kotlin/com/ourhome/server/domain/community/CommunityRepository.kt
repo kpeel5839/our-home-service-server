@@ -15,4 +15,5 @@ interface PostRepository : JpaRepository<Post, String> {
 interface CommentRepository : JpaRepository<Comment, String> {
     fun findByPostId(postId: String): List<Comment>
     fun findByPostIdIn(postIds: List<String>): List<Comment>
+    fun deleteByPostId(postId: String)
 }

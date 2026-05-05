@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.security.access.AccessDeniedException
 
 class NotFoundException(message: String) : RuntimeException(message)
 class ConflictException(message: String) : RuntimeException(message)
@@ -32,4 +33,9 @@ class GlobalExceptionHandler {
     fun handleIllegalArgument(e: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(e.message ?: "Bad request", "BAD_REQUEST"))
+
+    @ExceptionHandler(IllegalStateException::class)
+    fun handleIllegalState(e: IllegalStateException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(e.message ?: "인증이 필요합니다", "UNAUTHORIZED"))
 }

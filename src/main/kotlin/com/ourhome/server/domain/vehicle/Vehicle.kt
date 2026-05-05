@@ -95,10 +95,9 @@ data class ParkingRecordResponse(val id: String, val vehicleId: String, val memb
     val floor: String, val zone: String?, val memo: String?, val recordedAt: String)
 
 data class CreateVehicleRequest(val name: String, val plateNumber: String)
-data class CreateReservationRequest(val memberId: String, val startTime: String, val endTime: String, val purpose: String? = null)
-data class ApproveReservationRequest(val approverId: String)
-data class CreateFuelRecordRequest(val memberId: String, val date: String, val liters: Double, val amount: Int, val stationName: String? = null)
-data class CreateParkingRecordRequest(val memberId: String, val floor: String, val zone: String? = null, val memo: String? = null)
+data class CreateReservationRequest(val startTime: String, val endTime: String, val purpose: String? = null)
+data class CreateFuelRecordRequest(val date: String, val liters: Double, val amount: Int, val stationName: String? = null)
+data class CreateParkingRecordRequest(val floor: String, val zone: String? = null, val memo: String? = null)
 
 fun Vehicle.toResponse() = VehicleResponse(id, name, plateNumber)
 fun VehicleReservation.toResponse() = ReservationResponse(id, vehicleId, memberId, startTime, endTime, purpose, approved)

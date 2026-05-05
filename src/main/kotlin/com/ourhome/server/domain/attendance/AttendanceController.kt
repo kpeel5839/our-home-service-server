@@ -1,6 +1,8 @@
 package com.ourhome.server.domain.attendance
 
+import com.ourhome.server.config.ForbiddenException
 import com.ourhome.server.config.NotFoundException
+import com.ourhome.server.config.SecurityUtils
 import com.ourhome.server.domain.member.MemberRepository
 import com.ourhome.server.domain.notification.DiscordNotificationService
 import org.springframework.http.HttpStatus
@@ -24,16 +26,17 @@ class AttendanceController(
 
     @PostMapping
     fun createAttendance(@RequestBody request: CreateAttendanceRequest): ResponseEntity<AttendanceResponse> {
+        val memberId = SecurityUtils.currentMemberId()
         val attendance = AttendanceStatus(
             date = request.date,
-            memberId = request.memberId,
+            memberId = memberId,
             status = request.status,
             expectedReturnTime = request.expectedReturnTime,
             memo = request.memo
         )
         val saved = attendanceRepository.save(attendance)
         if (request.status == AttendanceStatusType.OUT) {
-            val name = memberName(request.memberId)
+            val name = memberName(memberId)
             val memoPart = if (!request.memo.isNullOrBlank()) "\n메모: ${request.memo}" else ""
             discordNotificationService.sendToAllMembers("🌙 ${name}님이 오늘 외박이에요$memoPart")
         }
@@ -45,7 +48,9 @@ class AttendanceController(
         @PathVariable id: String,
         @RequestBody request: UpdateAttendanceRequest
     ): ResponseEntity<AttendanceResponse> {
+        val memberId = SecurityUtils.currentMemberId()
         val attendance = attendanceRepository.findById(id).orElseThrow { NotFoundException("Attendance not found: $id") }
+        if (attendance.memberId != memberId) throw ForbiddenException("본인의 출석 정보만 수정할 수 있습니다")
         val previousStatus = attendance.status
         request.status?.let { attendance.status = it }
         if (request.clearReturnTime == true) attendance.expectedReturnTime = null

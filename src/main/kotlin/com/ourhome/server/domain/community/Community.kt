@@ -1,6 +1,7 @@
 package com.ourhome.server.domain.community
 
 import jakarta.persistence.*
+import org.hibernate.annotations.BatchSize
 import java.time.Instant
 import java.util.UUID
 
@@ -16,17 +17,19 @@ class Post(
     @Column(nullable = false, columnDefinition = "TEXT")
     var content: String,
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "post_images", joinColumns = [JoinColumn(name = "post_id")])
     @Column(name = "image_url")
+    @BatchSize(size = 30)
     val images: MutableList<String> = mutableListOf(),
 
     @Column(nullable = false)
     val createdAt: String = Instant.now().toString(),
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "post_likes", joinColumns = [JoinColumn(name = "post_id")])
     @Column(name = "member_id")
+    @BatchSize(size = 30)
     val likes: MutableList<String> = mutableListOf()
 )
 
@@ -65,9 +68,8 @@ data class PostListResponse(
     val nextCursor: String?
 )
 
-data class CreatePostRequest(val authorId: String, val content: String, val images: List<String> = emptyList())
-data class CreateCommentRequest(val authorId: String, val content: String)
-data class LikeRequest(val memberId: String)
+data class CreatePostRequest(val content: String, val images: List<String> = emptyList())
+data class CreateCommentRequest(val content: String)
 
 fun Comment.toResponse() = CommentResponse(id, postId, authorId, content, createdAt)
 

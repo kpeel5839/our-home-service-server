@@ -10,6 +10,7 @@ interface VehicleReservationRepository : JpaRepository<VehicleReservation, Strin
         vehicleId: String, endTime: String, startTime: String
     ): List<VehicleReservation>
     fun findByStartTimeStartingWith(datePrefix: String): List<VehicleReservation>
+    fun findByEndTimeBetween(from: String, to: String): List<VehicleReservation>
 }
 
 interface FuelRecordRepository : JpaRepository<FuelRecord, String> {

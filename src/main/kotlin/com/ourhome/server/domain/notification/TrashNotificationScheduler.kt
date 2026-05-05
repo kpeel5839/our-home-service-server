@@ -2,7 +2,6 @@ package com.ourhome.server.domain.notification
 
 import com.ourhome.server.domain.member.MemberRepository
 import com.ourhome.server.domain.trash.TrashScheduleRepository
-import com.ourhome.server.domain.trash.TrashType
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -16,13 +15,6 @@ class TrashNotificationScheduler(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val trashLabels = mapOf(
-        TrashType.GENERAL to "일반쓰레기",
-        TrashType.RECYCLE to "재활용",
-        TrashType.FOOD to "음식물",
-        TrashType.LARGE to "대형폐기물"
-    )
-
     /** 매일 오전 6시 (KST) — 오늘 쓰레기 배출 담당자 알림 */
     @Scheduled(cron = "0 0 6 * * *", zone = "Asia/Seoul")
     fun sendTrashReminders() {
@@ -34,8 +26,7 @@ class TrashNotificationScheduler(
             val member = memberRepository.findById(schedule.memberId).orElse(null)
             val name = member?.name ?: "알 수 없음"
             val role = member?.role?.name ?: "OTHER"
-            val types = schedule.trashTypes.joinToString(", ") { trashLabels[it] ?: it.name }
-            discordNotificationService.sendToRole(role, "🗑️ ${name}님, 오늘 쓰레기 버리는 날이에요!\n$types")
+            discordNotificationService.sendToRole(role, "🗑️ ${name}님, 오늘 쓰레기 버리는 날이에요!")
         }
     }
 }

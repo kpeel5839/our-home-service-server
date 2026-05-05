@@ -1,6 +1,7 @@
 package com.ourhome.server.domain.fridge
 
 import com.ourhome.server.config.NotFoundException
+import com.ourhome.server.config.SecurityUtils
 import com.ourhome.server.domain.member.MemberRepository
 import com.ourhome.server.domain.notification.DiscordNotificationService
 import org.springframework.http.HttpStatus
@@ -33,8 +34,9 @@ class FridgeController(
 
     @PostMapping
     fun createItem(@RequestBody request: CreateFridgeItemRequest): ResponseEntity<FridgeItemResponse> {
+        val registeredBy = SecurityUtils.currentMemberId()
         val item = FridgeItem(
-            registeredBy = request.registeredBy,
+            registeredBy = registeredBy,
             name = request.name,
             category = request.category,
             quantity = request.quantity,
@@ -43,10 +45,10 @@ class FridgeController(
             storageType = request.storageType
         )
         val saved = fridgeRepository.save(item)
-        val memberName = memberRepository.findById(request.registeredBy).map { it.name }.orElse("누군가")
+        val memberName = memberRepository.findById(registeredBy).map { it.name }.orElse("누군가")
         val storage = storageLabels[request.storageType] ?: request.storageType.name
         discordNotificationService.sendToAllMembers(
-            "🧊 ${memberName}님이 ${request.name}을(를) ${storage}에 넣었어요! (${request.quantity}${request.unit}, 유통기한: ${request.expirationDate})"
+            "🧊 ${memberName}님이 ${item.name}을(를) ${storage}에 넣었어요! (${item.quantity}${item.unit}, 유통기한: ${item.expirationDate})"
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
     }

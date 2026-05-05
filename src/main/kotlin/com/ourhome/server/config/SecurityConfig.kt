@@ -3,6 +3,7 @@ package com.ourhome.server.config
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
+import org.springframework.scheduling.annotation.EnableAsync
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -14,7 +15,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
 @EnableWebSecurity
+@EnableAsync
 class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
+
+    @Bean
+    fun duplicateRequestFilter() = DuplicateRequestFilter()
 
     @Bean
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
@@ -29,12 +34,12 @@ class SecurityConfig(private val jwtAuthFilter: JwtAuthFilter) {
                     // 인증 없이 허용
                     .requestMatchers(HttpMethod.POST, "/api/auth/kakao").permitAll()
                     .requestMatchers("/actuator/**").permitAll()
-                    .requestMatchers("/h2-console/**").permitAll()
                     // 나머지는 JWT 필요
                     .anyRequest().authenticated()
             }
             .headers { it.frameOptions { fo -> fo.disable() } }
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterAfter(duplicateRequestFilter(), JwtAuthFilter::class.java)
 
         return http.build()
     }

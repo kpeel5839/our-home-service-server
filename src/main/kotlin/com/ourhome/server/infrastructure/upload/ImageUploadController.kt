@@ -1,8 +1,6 @@
 package com.ourhome.server.infrastructure.upload
 
 import com.cloudinary.Cloudinary
-import com.cloudinary.util.ObjectUtils
-import com.ourhome.server.config.GlobalExceptionHandler
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.web.servlet.MultipartConfigFactory
 import org.springframework.context.annotation.Bean
@@ -31,8 +29,8 @@ class CloudinaryConfig(
     @Bean
     fun multipartConfigElement(): MultipartConfigElement {
         val factory = MultipartConfigFactory()
-        factory.setMaxFileSize(DataSize.ofMegabytes(10))
-        factory.setMaxRequestSize(DataSize.ofMegabytes(10))
+        factory.setMaxFileSize(DataSize.ofMegabytes(200))
+        factory.setMaxRequestSize(DataSize.ofMegabytes(200))
         return factory.createMultipartConfig()
     }
 }
@@ -50,15 +48,28 @@ class ImageUploadController(private val cloudinary: Cloudinary) {
         val contentType = file.contentType ?: ""
         if (!contentType.startsWith("image/")) throw IllegalArgumentException("이미지 파일만 업로드할 수 있습니다")
 
-        // UUID 기반 public_id — URL 추측 불가
         val publicId = "family/${UUID.randomUUID()}"
         val result = cloudinary.uploader().upload(
             file.bytes,
-            ObjectUtils.asMap(
-                "public_id", publicId,
-                "overwrite", false,
-                "resource_type", "image"
-            )
+            mapOf("public_id" to publicId, "overwrite" to false, "resource_type" to "image")
+        )
+        val url = result["secure_url"] as String
+        return ResponseEntity.ok(mapOf("url" to url))
+    }
+
+    @PostMapping("/video", consumes = ["multipart/form-data"])
+    fun uploadVideo(@RequestParam("file") file: MultipartFile): ResponseEntity<Map<String, String>> {
+        if (cloudinary.config.cloudName.isNullOrBlank()) {
+            throw IllegalStateException("Cloudinary가 설정되지 않았습니다. 관리자에게 문의하세요.")
+        }
+        if (file.isEmpty) throw IllegalArgumentException("파일이 비어있습니다")
+        val contentType = file.contentType ?: ""
+        if (!contentType.startsWith("video/")) throw IllegalArgumentException("동영상 파일만 업로드할 수 있습니다")
+
+        val publicId = "family/${UUID.randomUUID()}"
+        val result = cloudinary.uploader().upload(
+            file.bytes,
+            mapOf("public_id" to publicId, "overwrite" to false, "resource_type" to "video")
         )
         val url = result["secure_url"] as String
         return ResponseEntity.ok(mapOf("url" to url))
