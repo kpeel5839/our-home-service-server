@@ -45,6 +45,22 @@ class DiscordNotificationService(private val props: DiscordProperties) {
         urls.forEach { url -> send(url, content) }
     }
 
+    /** 특정 역할을 제외한 멤버들에게만 전송 (멘션 알림 분리용) */
+    @Async
+    fun sendToMembersExcept(excludeRoles: Set<String>, content: String) {
+        val excluded = excludeRoles.map { it.uppercase() }.toSet()
+        val urls = props.memberWebhooks
+            .filter { (role, _) -> role.uppercase() !in excluded }
+            .values.toSet()
+            .filter { it.isNotBlank() }
+        if (urls.isEmpty()) {
+            val fallback = props.webhookUrl.takeIf { it.isNotBlank() } ?: return
+            send(fallback, content)
+        } else {
+            urls.forEach { url -> send(url, content) }
+        }
+    }
+
     /** 가족 멤버 웹훅 + market 웹훅으로 전송 (차량 예약·주식 알림용) */
     @Async
     fun sendToAll(content: String) {
