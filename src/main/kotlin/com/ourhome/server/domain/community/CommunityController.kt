@@ -142,16 +142,18 @@ class CommunityController(
         val saved = commentRepository.save(comment)
         val commenterName = memberName(authorId)
         val preview = if (request.content.length > 40) request.content.take(40) + "..." else request.content
-        val mentionedRoles = request.mentions
-            .filter { it != authorId }
-            .mapNotNull { memberRepository.findById(it).orElse(null)?.role?.name?.uppercase() }
-            .toSet()
-        if (mentionedRoles.isEmpty()) {
+        // 멘션된 타인 목록 (본인 자기 멘션 제외)
+        val mentionedOthers = request.mentions.filter { it != authorId }
+            .mapNotNull { memberRepository.findById(it).orElse(null) }
+        if (mentionedOthers.isEmpty()) {
+            // 멘션 없음 → 전체 알림
             discordNotificationService.sendToAllMembers("💬 ${commenterName}님이 피드에 댓글을 달았어요\n\"$preview\"\n${postLink(id)}")
         } else {
+            // 멘션 있음 → 멘션된 사람 제외한 나머지에게 일반 알림
+            val mentionedRoles = mentionedOthers.map { it.role.name.uppercase() }.toSet()
             discordNotificationService.sendToMembersExcept(mentionedRoles, "💬 ${commenterName}님이 피드에 댓글을 달았어요\n\"$preview\"\n${postLink(id)}")
-            request.mentions.filter { it != authorId }.forEach { mentionedId ->
-                val mentioned = memberRepository.findById(mentionedId).orElse(null) ?: return@forEach
+            // 멘션된 사람에게는 개인 하이라이팅 알림
+            mentionedOthers.forEach { mentioned ->
                 discordNotificationService.sendToRole(
                     mentioned.role.name,
                     "👋 ${commenterName}님이 댓글에서 @${mentioned.name}님을 언급했어요\n\"$preview\"\n${postLink(id)}"
