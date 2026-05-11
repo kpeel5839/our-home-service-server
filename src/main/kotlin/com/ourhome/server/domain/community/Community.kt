@@ -61,7 +61,13 @@ class Comment(
     @CollectionTable(name = "comment_mentions", joinColumns = [JoinColumn(name = "comment_id")])
     @Column(name = "member_id")
     @BatchSize(size = 10)
-    val mentions: MutableList<String> = mutableListOf()
+    val mentions: MutableList<String> = mutableListOf(),
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "comment_likes", joinColumns = [JoinColumn(name = "comment_id")])
+    @Column(name = "member_id")
+    @BatchSize(size = 10)
+    val likes: MutableList<String> = mutableListOf()
 )
 
 data class PostResponse(
@@ -73,7 +79,8 @@ data class PostResponse(
 data class CommentResponse(
     val id: String, val postId: String, val authorId: String,
     val content: String, val createdAt: String, val updatedAt: String?,
-    val mentions: List<String> = emptyList()
+    val mentions: List<String> = emptyList(),
+    val likes: List<String> = emptyList()
 )
 
 data class PostListResponse(
@@ -86,7 +93,7 @@ data class UpdatePostRequest(val content: String, val images: List<String> = emp
 data class CreateCommentRequest(val content: String, val mentions: List<String> = emptyList())
 data class UpdateCommentRequest(val content: String, val mentions: List<String> = emptyList())
 
-fun Comment.toResponse() = CommentResponse(id, postId, authorId, content, createdAt, updatedAt, mentions.toList())
+fun Comment.toResponse() = CommentResponse(id, postId, authorId, content, createdAt, updatedAt, mentions.toList(), likes.toList())
 
 fun Post.toResponse(comments: List<Comment> = emptyList()) = PostResponse(
     id, authorId, content, images.toList(), createdAt, updatedAt, likes.toList(), comments.map { it.toResponse() }

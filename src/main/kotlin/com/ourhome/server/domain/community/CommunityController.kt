@@ -190,6 +190,24 @@ class CommunityController(
     }
 
     @Transactional
+    @PatchMapping("/{id}/comments/{commentId}/like")
+    fun toggleCommentLike(
+        @PathVariable id: String,
+        @PathVariable commentId: String
+    ): ResponseEntity<Map<String, List<String>>> {
+        val memberId = SecurityUtils.currentMemberId()
+        val comment = commentRepository.findById(commentId).orElseThrow { NotFoundException("Comment not found: $commentId") }
+        if (comment.postId != id) throw NotFoundException("Comment does not belong to this post")
+        if (comment.likes.contains(memberId)) {
+            comment.likes.remove(memberId)
+        } else {
+            comment.likes.add(memberId)
+        }
+        commentRepository.save(comment)
+        return ResponseEntity.ok(mapOf("likes" to comment.likes.toList()))
+    }
+
+    @Transactional
     @DeleteMapping("/{id}/comments/{commentId}")
     fun deleteComment(
         @PathVariable id: String,
